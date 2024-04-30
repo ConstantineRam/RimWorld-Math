@@ -1,8 +1,11 @@
-﻿using CrunchyDuck.Math.MathFilters;
+﻿using System;
+using CrunchyDuck.Math.MathFilters;
 using CrunchyDuck.Math.ModCompat;
 using RimWorld;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using JetBrains.Annotations;
 using Verse;
 using ThingFilter = CrunchyDuck.Math.MathFilters.ThingFilter;
 
@@ -17,30 +20,59 @@ namespace CrunchyDuck.Math {
 		public List<Thing> ownedAnimals = new List<Thing>();
 		public Dictionary<string, List<Thing>> resources = new Dictionary<string, List<Thing>>();
 
-		public CachedMapData(Map map) {
+        public Map GetMap => map;
+
+        public bool IsKeyOf(Map map)
+            => map != null && map == this.map;
+
+        public bool UpdatedWasRequested { get; private set; } = false;
+
+        public CachedMapData(Map map) {
 			this.map = map;
 
-			foreach (Pawn p in map.mapPawns.AllPawns) {
-				bool in_faction = p.Faction == Faction.OfPlayer;
+			foreach (Pawn p in map.mapPawns.AllPawns) 
+            {
+				var in_faction = p.Faction == Faction.OfPlayer;
+				if(!in_faction) continue;
+                
 				bool animal = p.AnimalOrWildMan();
 				bool guest = p.IsQuestLodger() || p.guest?.HostFaction == Faction.OfPlayer;
 				bool prisoner = p.IsPrisonerOfColony;
 				bool slave = p.IsSlaveOfColony;
 
-				if (animal && in_faction) {
-					ownedAnimals.Add(p);
-					pawns_dict[p.LabelShort.ToParameter()] = p;
-				}
-				else {
-					if (in_faction || guest || prisoner || slave) {
-						humanPawns.Add(p);
-						pawns_dict[p.LabelShort.ToParameter()] = p;
-					}
-				}
-			}
+                if (animal)
+                {
+                    ownedAnimals.Add(p);
+                    pawns_dict[p.LabelShort.ToParameter()] = p;
+                    continue;
+
+                }
+				//TODO: Optimize checks and do save stuff
+                if (in_faction || guest || prisoner || slave)
+                {
+                    humanPawns.Add(p);
+                    pawns_dict[p.LabelShort.ToParameter()] = p;
+                }
+            }
 		}
 
-		public bool SearchVariable(string input, BillComponent bc, out float count) {
+		// Ugly async call from sync on assumption of pure sync caller. TODO: Cancellation token to prevent too many calls
+        public void RequestUpdate(Action<CachedMapData> onUpdate)
+        {
+			if (UpdatedWasRequested) return;
+            UpdatedWasRequested = true;
+
+#pragma warning disable 4014
+            ProcessUpdateRequest(onUpdate);
+#pragma warning restore 4014
+
+        }
+
+		private async Task ProcessUpdateRequest(Action<CachedMapData> onUpdate)
+            => onUpdate?.Invoke(new CachedMapData(this.GetMap));
+        
+
+        public bool SearchVariable(string input, BillComponent bc, out float count) {
 			count = 0;
 			string[] commands = input.Split('.');
 			MathFilter filter = null;

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using Verse.Sound;
 using HarmonyLib;
+using LudeonTK;
 
 namespace CrunchyDuck.Math {
 
